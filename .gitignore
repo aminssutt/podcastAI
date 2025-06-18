@@ -1,0 +1,7 @@
+# Ignore everything
+*
+
+# But NOT these files or folders (whitelist them)
+!.gitignore
+!requirements.txt
+!podcast_gen.py
