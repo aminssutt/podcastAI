@@ -4,4 +4,5 @@
 # But NOT these files or folders (whitelist them)
 !.gitignore
 !requirements.txt
-!podcast_gen.py
+!podcast_gen_v2.py
+img/
