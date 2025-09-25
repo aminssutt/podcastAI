@@ -5,4 +5,4 @@
 !.gitignore
 !requirements.txt
 !podcast_gen_v2.py
-img/
+!img/
