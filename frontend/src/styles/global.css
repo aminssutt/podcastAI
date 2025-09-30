@@ -1,0 +1,11 @@
+* { box-sizing: border-box; }
+html, body { margin:0; padding:0; font-family: 'Inter', system-ui, sans-serif; background:#070707; color:#f5e9cc; }
+body { min-height:100vh; -webkit-font-smoothing: antialiased; }
+:root { --accent:#d6a340; --border:#4a3918; --panel:#111111; --panel-glow: rgba(214,163,64,0.25); }
+
+button { font-family: inherit; }
+
+::-webkit-scrollbar { width:10px; }
+::-webkit-scrollbar-track { background: #111; }
+::-webkit-scrollbar-thumb { background: #333; border-radius:4px; }
+::-webkit-scrollbar-thumb:hover { background:#444; }

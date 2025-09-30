@@ -1,8 +1,47 @@
-# Ignore everything
-*
+###############################
+# Base Ignore
+###############################
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
 
-# But NOT these files or folders (whitelist them)
-!.gitignore
-!requirements.txt
-!podcast_gen_v2.py
-!img/
+# Virtual envs
+.venv/
+venv/
+
+# Environment & secrets
+.env
+.env.*
+id_pw.py
+
+# OS / misc
+*.log
+*.DS_Store
+Thumbs.db
+
+# Audio outputs
+podcast_output_*.wav
+user_prompt_input.wav
+outputs/
+
+# Node / frontend build
+frontend/node_modules/
+frontend/dist/
+
+###############################
+# Explicit allow list (project sources)
+###############################
+!/.gitignore
+!/requirements.txt
+!/podcast_gen_v2.py
+!/podcast_gen.py
+!/temp.py
+!/frontend/
+!/frontend/index.html
+!/frontend/package.json
+!/frontend/vite.config.js
+!/frontend/src/**
+!/img/
