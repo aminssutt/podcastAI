@@ -34,6 +34,9 @@ export default function GeneratedPlayback(){
   const fakeProgressRef = useRef(null);
   const [saved, setSaved] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [seeking, setSeeking] = useState(false);
 
   useEffect(() => {
     let ignore=false;
@@ -191,8 +194,34 @@ export default function GeneratedPlayback(){
                 </button>
                 <button className="pb-btn circle" onClick={handlePause} disabled={!playing} aria-label="Pause"><PauseIcon size={28} /></button>
                 <div className="pb-meta">{speakers} speaker{speakers===2?'s':''} {voices && voices.length>0 && `| ${voices.map(v=>v==='M'?'Male':'Female').join(' / ')}`}</div>
-                <audio ref={audioRef} src={audioUrl || undefined} onEnded={handleEnded} />
+                <audio
+                  ref={audioRef}
+                  src={audioUrl || undefined}
+                  onEnded={handleEnded}
+                  onLoadedMetadata={() => { if(audioRef.current){ setDuration(audioRef.current.duration || 0); } }}
+                  onTimeUpdate={() => { if(!seeking && audioRef.current){ setCurrentTime(audioRef.current.currentTime); } }}
+                />
               </div>
+              {audioPhase==='ready' && audioUrl && (
+                <div className="pb-seek-row">
+                  <span className="time tcur">{formatTime(currentTime)}</span>
+                  <input
+                    type="range"
+                    className="seek-slider"
+                    min={0}
+                    max={duration || 0}
+                    step={0.1}
+                    value={Math.min(currentTime, duration || 0)}
+                    onChange={(e)=>{ const val = parseFloat(e.target.value); setCurrentTime(val); }}
+                    onMouseDown={()=>setSeeking(true)}
+                    onMouseUp={(e)=>{ const val = parseFloat(e.target.value); if(audioRef.current) audioRef.current.currentTime = val; setSeeking(false);} }
+                    onTouchStart={()=>setSeeking(true)}
+                    onTouchEnd={(e)=>{ const val = parseFloat(e.target.value); if(audioRef.current) audioRef.current.currentTime = val; setSeeking(false);} }
+                    disabled={!duration}
+                  />
+                  <span className="time tdur">{formatTime(duration)}</span>
+                </div>
+              )}
               {(audioPhase==='generating' || audioPhase==='downloading' || (audioLoading && audioPhase!=='ready')) && (
                 <div style={{width:'100%'}}>
                   <div className="pb-loading">
@@ -216,4 +245,12 @@ export default function GeneratedPlayback(){
       </div>
     </div>
   );
+}
+
+// time formatter helper
+function formatTime(sec){
+  if(!isFinite(sec)) return '0:00';
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60).toString().padStart(2,'0');
+  return `${m}:${s}`;
 }

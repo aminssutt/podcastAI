@@ -30,7 +30,7 @@ JOBS_DIR.mkdir(parents=True, exist_ok=True)
 
 PERSIST_FIELDS = [
     "status", "title", "transcript", "speakers", "voices", "use_internet",
-    "saved", "category", "saved_at", "theme", "geo_location", "voice_names", "language"
+    "saved", "category", "saved_at", "theme", "geo_location", "voice_names", "language", "truncated"
 ]
 
 def _persist_job(job_id: str):
@@ -60,6 +60,12 @@ def _load_job(job_id: str) -> bool:
 
 LLM_MODEL_ID = "gemini-2.0-flash"
 TTS_MODEL_ID = "gemini-2.5-flash-preview-tts"
+
+# Approximate generation duration controls
+# Spoken average: ~2.3–2.7 words/sec. Using 2.5 for estimation.
+MAX_SPOKEN_SECONDS = 90  # 1 min 30
+AVG_WORDS_PER_SECOND = 2.5
+MAX_TRANSCRIPT_WORDS = int(MAX_SPOKEN_SECONDS * AVG_WORDS_PER_SECOND)  # ~225
 
 def get_client():
     api_key = os.getenv("API_KEY")
@@ -291,7 +297,7 @@ async def stream_transcript(job_id: str):
 
     # Build improved prompt
     improvement_prompt = (
-        """Your task:
+        f"""Your task:
         You are a prompt generator that takes a user idea (either spoken or written) and converts it into a detailed, high-quality prompt 
         to be used for a text-to-speech dialogue model.
         Analyze the user's input and extract the following information:
@@ -309,6 +315,7 @@ async def stream_transcript(job_id: str):
         - Describe how to handle corrections, vocabulary explanations, and mistakes (if applicable).
         - Provide clear output formatting instructions (e.g., "Only output dialogue, labeled with character names").
         - Avoid adding any extra narration, sound effects, or non-dialogue text.
+        - LIMIT: The final transcript should not exceed ~{MAX_TRANSCRIPT_WORDS} words (~{MAX_SPOKEN_SECONDS} seconds of speech). Conclude naturally when reaching that length.
         Output ONLY the improved prompt itself, not any commentary or explanation.
         Be explicit, professional, and detailed to ensure the TTS model fully understands the task."""
     )
@@ -376,9 +383,20 @@ async def stream_transcript(job_id: str):
                 if hasattr(chunk, 'text') and chunk.text:
                     transcript_acc.append(chunk.text)
                     current = ''.join(transcript_acc)
+                    # Enforce word limit
+                    words = current.split()
+                    truncated_flag = False
+                    if len(words) > MAX_TRANSCRIPT_WORDS:
+                        current = ' '.join(words[:MAX_TRANSCRIPT_WORDS])
+                        transcript_acc = [current]  # collapse to truncated form
+                        truncated_flag = True
+                        jobs[job_id]["truncated"] = True
                     jobs[job_id]["transcript"] = current
-                    payload = {"delta": chunk.text, "full": current}
+                    payload = {"delta": chunk.text if not truncated_flag else None, "full": current, "truncated": truncated_flag}
+                    # Only send delta if not truncated; once truncated we stop streaming extra deltas
                     yield f"event: chunk\ndata: {json.dumps(payload)}\n\n"
+                    if truncated_flag:
+                        break
                     await asyncio.sleep(0)  # cooperative
 
             full_transcript = jobs[job_id]["transcript"]
@@ -402,7 +420,7 @@ async def stream_transcript(job_id: str):
             jobs[job_id]["status"] = "done"
             # Persist completed job so playback still works after reload
             _persist_job(job_id)
-            final_payload = {"title": title, "full": full_transcript}
+            final_payload = {"title": title, "full": full_transcript, "truncated": jobs[job_id].get("truncated", False)}
             yield f"event: done\ndata: {json.dumps(final_payload)}\n\n"
         except Exception as e:
             jobs[job_id]["status"] = "error"
@@ -463,13 +481,21 @@ def _wrap_pcm_to_wav(pcm_bytes: bytes, sample_rate: int = 24000, channels: int =
         wf.writeframes(pcm_bytes)
     return buffer.getvalue()
 
-# Canonical voice name pools (subset of original lists)
-FEMALE_VOICE_POOL = [
-    "Zephyr", "Kore", "Leda", "Aoede", "Callirrhoe", "Umbriel", "Despina", "Erinome"
-]
-MALE_VOICE_POOL = [
-    "Puck", "Charon", "Fenrir", "Orus", "Enceladus", "Iapetus", "Algieba", "Alnilam"
-]
+# Canonical voice name pools (updated full sets provided by user)
+FEMALE_VOICE_DESCRIPTORS = {
+    "Zephyr": "Bright", "Kore": "Firm", "Leda": "Youthful", "Aoede": "Breezy",
+    "Callirrhoe": "Easy-going", "Autonoe": "Bright", "Despina": "Smooth", "Erinome": "Clear",
+    "Laomedeia": "Upbeat", "Achernar": "Soft", "Pulcherrima": "Forward", "Vindemiatrix": "Gentle",
+    "Sulafat": "Warm", "Gacrux": "Mature"
+}
+MALE_VOICE_DESCRIPTORS = {
+    "Puck": "Upbeat", "Charon": "Informative", "Fenrir": "Excitable", "Orus": "Firm",
+    "Enceladus": "Breathy", "Iapetus": "Clear", "Algenib": "Gravelly", "Rasalgethi": "Informative",
+    "Alnilam": "Firm", "Schedar": "Even", "Zubenelgenubi": "Casual", "Sadaltager": "Knowledgeable",
+    "Umbriel": "Easy-going", "Achird": "Friendly", "Sadachbia": "Lively"
+}
+FEMALE_VOICE_POOL = list(FEMALE_VOICE_DESCRIPTORS.keys())
+MALE_VOICE_POOL = list(MALE_VOICE_DESCRIPTORS.keys())
 
 def _pick_voice(gender: str) -> str:
     if gender == 'F' and FEMALE_VOICE_POOL:
