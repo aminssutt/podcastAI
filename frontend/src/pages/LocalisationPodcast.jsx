@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import '../styles/generated.css';
-import { UserIcon, SettingsIcon } from '../ui/Icons.jsx';
+import { UserIcon } from '../ui/Icons.jsx';
 import { startGeneration } from '../api/podcastService';
 
 /* Progressive localisation flow (single speaker):
@@ -50,7 +50,8 @@ export default function LocalisationPodcast(){
         voices: [gender],
         category: 'localisation',
         theme,
-        geo_location: value // reuse so backend augmentation keeps working
+        geo_location: value, // reuse so backend augmentation keeps working
+        language: (localStorage.getItem('defaultLanguage') || 'en')
       });
       // Return to original behavior: go to transcript streaming result page first
       setTimeout(()=> navigate(`/local/result/${jobId}`), 600);
@@ -70,7 +71,6 @@ export default function LocalisationPodcast(){
             <h1 className="gen-title">Localisation Podcast</h1>
             <div className="gen-actions">
               <button className="icon-btn sm" aria-label="Profile" onClick={()=>navigate('/profile')}><UserIcon size={20} /></button>
-              <button className="icon-btn sm" aria-label="Settings"><SettingsIcon size={20} /></button>
             </div>
           </div>
 

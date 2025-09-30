@@ -30,7 +30,7 @@ JOBS_DIR.mkdir(parents=True, exist_ok=True)
 
 PERSIST_FIELDS = [
     "status", "title", "transcript", "speakers", "voices", "use_internet",
-    "saved", "category", "saved_at", "theme", "geo_location", "voice_names"
+    "saved", "category", "saved_at", "theme", "geo_location", "voice_names", "language"
 ]
 
 def _persist_job(job_id: str):
@@ -87,6 +87,7 @@ async def start_generation(
     theme: str = Form(""),  # culture | history | music | sport (only for localisation)
     geo_location: str = Form(""),  # free-form location / city / place (only for localisation)
     audio_file: UploadFile | None = File(None),
+    language: str = Form("")  # optional default language code (en, fr, es, de, it, pt, ko, zh)
 ):
     # Allow empty text only for localisation (we will synthesize a seed prompt)
     if prompt_mode == "text" and not text.strip():
@@ -102,6 +103,8 @@ async def start_generation(
         "title": None,
         "use_internet": use_internet,
     }
+    if language.strip():
+        jobs[job_id]["language"] = language.strip().lower()
     # Store initial content (text placeholder may be empty for localisation)
     if prompt_mode == "text":
         jobs[job_id]["raw_input"] = text if text.strip() else ""
@@ -315,6 +318,26 @@ async def stream_transcript(job_id: str):
     loc_theme = jobs[job_id].get("theme")
     loc_geo = jobs[job_id].get("geo_location")
     localisation_instruction = None
+    # Language enforcement (heuristic). If user did not explicitly request another language in raw_input, force chosen one.
+    language_instruction = None
+    chosen_lang = jobs[job_id].get("language")
+    if chosen_lang:
+        raw_lower = (raw_input or "").lower()
+        explicit_tokens = [
+            " in french", " en français", " en francais", " in english", " en anglais",
+            " in spanish", " en español", " en espanol", " in german", " auf deutsch",
+            " in italian", " in portuguese", " em portugues", " in korean", " en coréen", " en coreen",
+            " 한국어", " in chinese", " en chinois", " 中文", " 汉语", " 漢語", " 普通话"
+        ]
+        if not any(tok in raw_lower for tok in explicit_tokens):
+            human_names = {
+                "en": "English", "fr": "French", "es": "Spanish", "de": "German", "it": "Italian",
+                "pt": "Portuguese", "ko": "Korean", "zh": "Chinese"
+            }
+            human_lang = human_names.get(chosen_lang, chosen_lang)
+            language_instruction = (
+                f"The entire podcast MUST be written in {human_lang}. Do not switch languages except for unavoidable proper nouns."
+            )
     if category == "localisation":
         localisation_instruction = (
             f"Localization context: The podcast is a single-host monologue about {loc_theme} aspects of {loc_geo}. "
@@ -328,6 +351,8 @@ async def stream_transcript(job_id: str):
             improv_contents = [improvement_prompt, speaker_instructions]
             if localisation_instruction:
                 improv_contents.append(localisation_instruction)
+            if language_instruction:
+                improv_contents.append(language_instruction)
             improv_contents.append(raw_input)
             improved = client.models.generate_content(
                 model=LLM_MODEL_ID,
@@ -417,6 +442,7 @@ async def get_full(job_id: str):
         "voice_names": j.get("voice_names"),
         "theme": j.get("theme"),
         "geo_location": j.get("geo_location"),
+        "language": j.get("language"),
     }
 
 @app.delete("/api/job/{job_id}")
@@ -587,6 +613,7 @@ async def list_status():
             "voice_names": j.get("voice_names"),
             "theme": j.get("theme"),
             "geo_location": j.get("geo_location"),
+            "language": j.get("language"),
         }
         for job_id, j in jobs.items()
     }

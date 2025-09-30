@@ -10,6 +10,7 @@ export default function Profile(){
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [defaultLang, setDefaultLang] = useState(()=> localStorage.getItem('defaultLanguage') || 'en');
 
   async function load(cat){
     setLoading(true); setError(null);
@@ -21,6 +22,12 @@ export default function Profile(){
   }
 
   useEffect(()=>{ load(category); }, [category]);
+
+  const handleLangChange = (e) => {
+    const val = e.target.value;
+    setDefaultLang(val);
+    localStorage.setItem('defaultLanguage', val);
+  };
 
   const handleOpen = (jobId) => navigate(`/generated/play/${jobId}`);
 
@@ -46,6 +53,34 @@ export default function Profile(){
             <button className="back-btn" onClick={()=>navigate('/')}>← Home</button>
           </header>
           <div className="pr-body">
+            <div style={{marginBottom:26, display:'flex', alignItems:'center', gap:22, flexWrap:'wrap'}}>
+              <div style={{display:'flex', flexDirection:'column', gap:6}}>
+                <label style={{fontSize:13, opacity:0.75, letterSpacing:'.6px', textTransform:'uppercase'}}>Default Language</label>
+                <div style={{display:'flex', alignItems:'center', gap:16}}>
+                  <select
+                    value={defaultLang}
+                    onChange={handleLangChange}
+                    style={{
+                      background:'#161616', color:'#f5e9cc', border:'2px solid #3a2d10',
+                      borderRadius:20, padding:'14px 28px', fontSize:16, fontWeight:600,
+                      letterSpacing:'.5px', cursor:'pointer', boxShadow:'0 0 0 1px #2a1e08'
+                    }}
+                  >
+                    <option value="en">English</option>
+                    <option value="fr">Français</option>
+                    <option value="es">Español</option>
+                    <option value="de">Deutsch</option>
+                    <option value="it">Italiano</option>
+                    <option value="pt">Português</option>
+                    <option value="ko">한국어 (Korean)</option>
+                    <option value="zh">中文 (Chinese)</option>
+                  </select>
+                  <div style={{fontSize:12, opacity:0.55, maxWidth:260, lineHeight:1.4}}>
+                    Applied automatically unless your prompt explicitly requests another language.
+                  </div>
+                </div>
+              </div>
+            </div>
             {loading && <div className="pr-loading">Loading...</div>}
             {error && <div className="pr-error">{error}</div>}
             {!loading && !error && items.length === 0 && (

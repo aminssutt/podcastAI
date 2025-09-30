@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import '../styles/home.css';
-import { UserIcon, SettingsIcon } from '../ui/Icons.jsx';
+import { UserIcon } from '../ui/Icons.jsx';
 
 const Home = () => {
   const navigate = useNavigate();
@@ -13,7 +13,6 @@ const Home = () => {
           <div className="brand">Podcast AI</div>
           <div className="actions">
             <button className="icon-btn" aria-label="Profile" onClick={()=>navigate('/profile')}><UserIcon /></button>
-            <button className="icon-btn" aria-label="Settings"><SettingsIcon /></button>
           </div>
         </header>
 

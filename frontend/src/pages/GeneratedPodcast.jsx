@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import '../styles/generated.css';
-import { UserIcon, SettingsIcon } from '../ui/Icons.jsx';
+import { UserIcon } from '../ui/Icons.jsx';
 import { startGeneration } from '../api/podcastService';
 
 /*
@@ -78,13 +78,15 @@ const GeneratedPodcast = () => {
     setError(null);
     try {
       setLoading(true);
+      const defaultLanguage = localStorage.getItem('defaultLanguage') || 'en';
       const jobId = await startGeneration({
         mode: audioBlob ? 'audio' : 'text',
         text: audioBlob ? undefined : textPrompt.trim(),
         useInternet: true, // future toggle
         speakers: numSpeakers,
         voices: numSpeakers === '2' ? [voiceGender1, voiceGender2] : [voiceGender1],
-        audioBlob: audioBlob || undefined
+        audioBlob: audioBlob || undefined,
+        language: defaultLanguage
       });
       navigate(`/generated/result/${jobId}`);
     } catch (e) {
@@ -109,7 +111,6 @@ const GeneratedPodcast = () => {
           <h1 className="gen-title">Generated Podcast</h1>
           <div className="gen-actions">
             <button className="icon-btn sm" aria-label="Profile"><UserIcon size={20} /></button>
-            <button className="icon-btn sm" aria-label="Settings"><SettingsIcon size={20} /></button>
           </div>
         </div>
 

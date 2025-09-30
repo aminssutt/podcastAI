@@ -1,5 +1,12 @@
 * { box-sizing: border-box; }
-html, body { margin:0; padding:0; font-family: 'Inter', system-ui, sans-serif; background:#070707; color:#f5e9cc; }
+/* NouvelR font family declarations */
+@font-face { font-family: 'NouvelR'; src: url('/font/NouvelRLight.woff') format('woff'); font-weight:300; font-style:normal; font-display:swap; }
+@font-face { font-family: 'NouvelR'; src: url('/font/NouvelRBook.woff') format('woff'); font-weight:400; font-style:normal; font-display:swap; }
+@font-face { font-family: 'NouvelR'; src: url('/font/NouvelRRegular.woff') format('woff'); font-weight:500; font-style:normal; font-display:swap; }
+@font-face { font-family: 'NouvelR'; src: url('/font/NouvelRSemibold.woff') format('woff'); font-weight:600; font-style:normal; font-display:swap; }
+@font-face { font-family: 'NouvelR'; src: url('/font/NouvelRBold.woff') format('woff'); font-weight:700; font-style:normal; font-display:swap; }
+@font-face { font-family: 'NouvelR'; src: url('/font/NouvelRExtrabold.woff') format('woff'); font-weight:800; font-style:normal; font-display:swap; }
+html, body { margin:0; padding:0; font-family: 'NouvelR', 'Inter', system-ui, sans-serif; background:#070707; color:#f5e9cc; }
 body { min-height:100vh; -webkit-font-smoothing: antialiased; }
 :root { --accent:#d6a340; --border:#4a3918; --panel:#111111; --panel-glow: rgba(214,163,64,0.25); }
 
