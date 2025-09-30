@@ -30,7 +30,7 @@ JOBS_DIR.mkdir(parents=True, exist_ok=True)
 
 PERSIST_FIELDS = [
     "status", "title", "transcript", "speakers", "voices", "use_internet",
-    "saved", "category", "saved_at"
+    "saved", "category", "saved_at", "theme", "geo_location", "voice_names"
 ]
 
 def _persist_job(job_id: str):
@@ -82,11 +82,16 @@ async def start_generation(
     text: str = Form(""),
     use_internet: bool = Form(False),
     speakers: str = Form("1"),
-    voices: str = Form(""),  # comma separated (future use)
+    voices: str = Form(""),  # comma separated gender codes (M/F)
+    category: str = Form("generated"),  # 'generated' | 'localisation'
+    theme: str = Form(""),  # culture | history | music | sport (only for localisation)
+    geo_location: str = Form(""),  # free-form location / city / place (only for localisation)
     audio_file: UploadFile | None = File(None),
 ):
+    # Allow empty text only for localisation (we will synthesize a seed prompt)
     if prompt_mode == "text" and not text.strip():
-        return JSONResponse(status_code=400, content={"error": "Text prompt empty"})
+        if category != "localisation" or not geo_location.strip():
+            return JSONResponse(status_code=400, content={"error": "Text prompt empty"})
     if prompt_mode == "audio" and audio_file is None:
         return JSONResponse(status_code=400, content={"error": "Audio file missing"})
 
@@ -97,9 +102,9 @@ async def start_generation(
         "title": None,
         "use_internet": use_internet,
     }
-    # Store initial content
+    # Store initial content (text placeholder may be empty for localisation)
     if prompt_mode == "text":
-        jobs[job_id]["raw_input"] = text
+        jobs[job_id]["raw_input"] = text if text.strip() else ""
     else:
         # Store placeholder; actual transcription will occur lazily in stream endpoint
         jobs[job_id]["raw_input"] = "<audio>"
@@ -109,6 +114,28 @@ async def start_generation(
             jobs[job_id]["audio_mime"] = audio_file.content_type or "audio/webm"
         except Exception as e:
             jobs[job_id]["audio_error"] = f"Failed to read audio: {e}"  # fallback; will continue with placeholder
+    # Normalize category
+    if category not in ("generated", "localisation"):
+        category = "generated"
+    jobs[job_id]["category"] = category
+    # Store localisation extras if relevant
+    if category == "localisation":
+        # Force single speaker regardless of provided param to keep UX consistent
+        speakers = "1"
+        norm_theme = theme.lower().strip()
+        allowed_themes = {"culture", "history", "music", "sport"}
+        if norm_theme not in allowed_themes:
+            norm_theme = "culture"
+        jobs[job_id]["theme"] = norm_theme
+        jobs[job_id]["geo_location"] = geo_location.strip()
+        # If no user text provided, synthesize a seed raw_input so improvement model has context
+        if prompt_mode == "text" and not text.strip():
+            seed = (
+                f"Localisation seed: Generate an engaging educational monologue about the {norm_theme} aspects of "
+                f"{geo_location.strip()}. Include authentic cultural details and keep tone informative and lively."
+            )
+            jobs[job_id]["raw_input"] = seed
+
     # Store speaker configuration for later prompt enrichment
     try:
         spk_count = int(speakers)
@@ -283,12 +310,28 @@ async def stream_transcript(job_id: str):
         Be explicit, professional, and detailed to ensure the TTS model fully understands the task."""
     )
 
+    # Localisation augmentation (only affects how we improve the prompt; keeps rest of flow unchanged)
+    category = jobs[job_id].get("category")
+    loc_theme = jobs[job_id].get("theme")
+    loc_geo = jobs[job_id].get("geo_location")
+    localisation_instruction = None
+    if category == "localisation":
+        localisation_instruction = (
+            f"Localization context: The podcast is a single-host monologue about {loc_theme} aspects of {loc_geo}. "
+            f"The host is currently located in {loc_geo}. Incorporate at least one vivid, authentic local detail (food, landmark, custom) "
+            f"relevant to the {loc_theme} theme. Keep it educational yet engaging."
+        )
+
     async def event_generator():
         try:
             jobs[job_id]["status"] = "improving"
+            improv_contents = [improvement_prompt, speaker_instructions]
+            if localisation_instruction:
+                improv_contents.append(localisation_instruction)
+            improv_contents.append(raw_input)
             improved = client.models.generate_content(
                 model=LLM_MODEL_ID,
-                contents=[improvement_prompt, speaker_instructions, raw_input]
+                contents=improv_contents
             ).text
             # Send improved prompt event (optional for UI)
             yield f"event: meta\ndata: {json.dumps({'improved_prompt': improved})}\n\n"
@@ -315,10 +358,17 @@ async def stream_transcript(job_id: str):
 
             full_transcript = jobs[job_id]["transcript"]
             # Title generation
-            title_prompt = (
-                "Generate a concise, compelling podcast episode title (max 8 words) based ONLY on this transcript."
-                " No quotes, no extra punctuation. Transcript:\n" + full_transcript[:6000]
-            )
+            if jobs[job_id].get("category") == "localisation":
+                title_prompt = (
+                    "Generate a concise, compelling podcast episode title (max 8 words) capturing the localisation theme and place. "
+                    "Avoid quotes and punctuation flourishes. Theme: "
+                    f"{loc_theme}. Location: {loc_geo}. Transcript (truncated):\n" + full_transcript[:6000]
+                )
+            else:
+                title_prompt = (
+                    "Generate a concise, compelling podcast episode title (max 8 words) based ONLY on this transcript."
+                    " No quotes, no extra punctuation. Transcript:\n" + full_transcript[:6000]
+                )
             title = client.models.generate_content(
                 model=LLM_MODEL_ID,
                 contents=title_prompt
@@ -365,6 +415,8 @@ async def get_full(job_id: str):
         "saved": j.get("saved", False),
         "category": j.get("category"),
         "voice_names": j.get("voice_names"),
+        "theme": j.get("theme"),
+        "geo_location": j.get("geo_location"),
     }
 
 @app.delete("/api/job/{job_id}")
@@ -533,6 +585,8 @@ async def list_status():
             "saved": j.get("saved", False),
             "category": j.get("category"),
             "voice_names": j.get("voice_names"),
+            "theme": j.get("theme"),
+            "geo_location": j.get("geo_location"),
         }
         for job_id, j in jobs.items()
     }

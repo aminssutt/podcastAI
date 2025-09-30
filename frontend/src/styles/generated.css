@@ -3,6 +3,10 @@
 /* Fixed canvas for 1800x720 */
 .gen-canvas { width:1800px; height:720px; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; }
 .gen-canvas.center-phase { justify-content:center; }
+/* Toast notification */
+.toast { position:absolute; top:22px; right:26px; background:rgba(20,20,20,0.92); border:1px solid #3a2d10; padding:14px 22px; border-radius:18px; color:#f5e9cc; font-size:15px; font-weight:500; display:flex; gap:6px; align-items:center; box-shadow:0 4px 18px -6px rgba(0,0,0,0.5), 0 0 0 1px #2d220d; animation:toastIn .55s cubic-bezier(.4,.14,.2,1); }
+.toast .hl { color:var(--accent); font-weight:600; }
+@keyframes toastIn { 0% { opacity:0; transform:translateY(-6px) scale(.97);} 100% { opacity:1; transform:translateY(0) scale(1);} }
 /* Smooth slide of the card instead of layout jump */
 .gen-canvas .gen-card { transition: transform .55s cubic-bezier(.4,.14,.2,1); }
 .gen-canvas.prompt-phase .gen-card { transform:translateX(-120px); }

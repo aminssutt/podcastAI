@@ -3,12 +3,15 @@
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
-export async function startGeneration({ mode, text, useInternet, speakers, voices, audioBlob }) {
+export async function startGeneration({ mode, text, useInternet, speakers, voices, audioBlob, category, theme, geo_location }) {
   const form = new FormData();
   form.append('prompt_mode', mode); // 'text' | 'audio'
   form.append('use_internet', useInternet ? 'true' : 'false');
   form.append('speakers', speakers);
   form.append('voices', (voices || []).join(','));
+  if(category) form.append('category', category);
+  if(theme) form.append('theme', theme);
+  if(geo_location) form.append('geo_location', geo_location);
   if (mode === 'text') {
     form.append('text', text || '');
   } else if (mode === 'audio' && audioBlob) {
