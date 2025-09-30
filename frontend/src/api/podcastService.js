@@ -41,3 +41,37 @@ export function streamTranscript(jobId, { onMeta, onChunk, onDone, onError }) {
   });
   return () => es.close();
 }
+
+export async function getFullJob(jobId){
+  const res = await fetch(`${API_BASE}/api/full/${jobId}`);
+  if(!res.ok) throw new Error('Failed to load job');
+  return res.json();
+}
+
+export async function deleteJob(jobId){
+  const res = await fetch(`${API_BASE}/api/job/${jobId}`, { method:'DELETE' });
+  if(!res.ok) throw new Error('Failed to delete job');
+  return res.json();
+}
+
+export async function saveJob(jobId, category='generated'){
+  const form = new FormData();
+  form.append('category', category);
+  const res = await fetch(`${API_BASE}/api/save/${jobId}`, { method:'POST', body: form });
+  if(!res.ok) throw new Error('Failed to save podcast');
+  return res.json();
+}
+
+export async function listSaved(category){
+  const url = new URL(`${API_BASE}/api/saved`);
+  if(category) url.searchParams.set('category', category);
+  const res = await fetch(url.toString());
+  if(!res.ok) throw new Error('Failed to load saved podcasts');
+  return res.json();
+}
+
+export async function unsaveJob(jobId){
+  const res = await fetch(`${API_BASE}/api/saved/${jobId}`, { method:'DELETE' });
+  if(!res.ok) throw new Error('Failed to unsave podcast');
+  return res.json();
+}

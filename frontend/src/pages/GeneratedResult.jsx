@@ -47,8 +47,8 @@ export default function GeneratedResult() {
   }, [transcript]);
 
   const handleAccept = () => {
-    // Placeholder: In future we would trigger TTS generation or finalize job
-    navigate('/');
+    // Pass current data to playback as immediate fallback (in case backend memory was lost)
+    navigate(`/generated/play/${jobId}` , { state: { jobData: { title, transcript } } });
   };
 
   const handleUndo = () => {
@@ -60,11 +60,17 @@ export default function GeneratedResult() {
       <div className="result-canvas">
         <div className="result-card">
           <div className="res-header-row">
+            <div className="res-nav-left">
+              <button className="mini-nav-btn" onClick={handleUndo}>← Back</button>
+            </div>
             <h1 className="res-title">Generated Podcast</h1>
             <div className="res-status">
               {status === 'streaming' && <span className="res-badge live">Streaming...</span>}
               {status === 'done' && <span className="res-badge done">Done</span>}
               {status === 'error' && <span className="res-badge error">Error</span>}
+            </div>
+            <div className="res-nav-right">
+              <button className="mini-nav-btn" onClick={()=>navigate('/profile')}>Profile</button>
             </div>
           </div>
           <div className="res-body">

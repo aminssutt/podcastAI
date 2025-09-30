@@ -9,6 +9,13 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
+import io
+import wave
+import math
+import struct
+import random
+from datetime import datetime
+from pathlib import Path
 
 # Load environment variables from .env if present
 load_dotenv()
@@ -16,7 +23,43 @@ load_dotenv()
 # Simple in-memory job store (POC only)
 jobs: Dict[str, Dict[str, Any]] = {}
 
+# Minimal persistence (so that a uvicorn reload does not lose freshly generated podcasts)
+BASE_DATA_DIR = Path(__file__).parent / "data"
+JOBS_DIR = BASE_DATA_DIR / "jobs"
+JOBS_DIR.mkdir(parents=True, exist_ok=True)
+
+PERSIST_FIELDS = [
+    "status", "title", "transcript", "speakers", "voices", "use_internet",
+    "saved", "category", "saved_at"
+]
+
+def _persist_job(job_id: str):
+    j = jobs.get(job_id)
+    if not j:
+        return
+    try:
+        data = {k: j.get(k) for k in PERSIST_FIELDS if k in j}
+        data["job_id"] = job_id
+        with open(JOBS_DIR / f"{job_id}.json", "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+    except Exception as e:
+        print(f"[persist] failed to write job {job_id}: {e}")
+
+def _load_job(job_id: str) -> bool:
+    fp = JOBS_DIR / f"{job_id}.json"
+    if not fp.exists():
+        return False
+    try:
+        with open(fp, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        jobs[job_id] = data  # trust stored structure
+        return True
+    except Exception as e:
+        print(f"[persist] failed to load {job_id}: {e}")
+        return False
+
 LLM_MODEL_ID = "gemini-2.0-flash"
+TTS_MODEL_ID = "gemini-2.5-flash-preview-tts"
 
 def get_client():
     api_key = os.getenv("API_KEY")
@@ -73,8 +116,92 @@ async def start_generation(
         spk_count = 1
     voices_list = [v.strip().upper() for v in voices.split(',') if v.strip()]
     jobs[job_id]["speakers"] = spk_count
-    jobs[job_id]["voices"] = voices_list
+    jobs[job_id]["voices"] = voices_list  # genders (M/F)
+    # Pre-select concrete voice names now for stability (one per speaker)
+    voice_names = []
+    for idx in range(spk_count):
+        gender = voices_list[idx] if idx < len(voices_list) else None
+        voice_names.append(_pick_voice(gender or 'M'))
+    jobs[job_id]["voice_names"] = voice_names
     return {"job_id": job_id}
+
+def _generate_placeholder_audio(transcript: str, speakers: int, voices: list[str]) -> bytes:
+    """Generate a simple WAV (sine tones) representing the transcript.
+    - Each speaker gets a base frequency depending on gender & index.
+    - Duration of a line proportional to its character length.
+    This is ONLY a POC placeholder until real TTS is integrated.
+    """
+    sample_rate = 16000
+    lines = [ln.strip() for ln in transcript.splitlines() if ln.strip()]
+    if not lines:
+        lines = [transcript.strip() or "(empty)"]
+
+    # Frequency maps
+    base_map_m = [150, 190]  # male speakers
+    base_map_f = [240, 280]  # female speakers
+    fallback_map = [200, 260]
+
+    def speaker_freq(idx: int) -> int:
+        gender = None
+        if idx < len(voices):
+            gender = voices[idx]
+        if gender == 'M':
+            return base_map_m[idx if idx < len(base_map_m) else 0]
+        if gender == 'F':
+            return base_map_f[idx if idx < len(base_map_f) else 0]
+        return fallback_map[idx if idx < len(fallback_map) else 0]
+
+    # Parse speaker from line prefix (Speaker 1:, Speaker 2:)
+    def detect_speaker(line: str) -> int:
+        if line.lower().startswith('speaker 1:'): return 0
+        if line.lower().startswith('speaker 2:'): return 1
+        return 0
+
+    frames = []  # list of bytes chunks
+    for raw_line in lines:
+        line = raw_line
+        spk = detect_speaker(line)
+        # Remove label from audio content length calc
+        if line.lower().startswith('speaker 1:'):
+            spoken_content = line[len('Speaker 1:'):].strip()
+        elif line.lower().startswith('speaker 2:'):
+            spoken_content = line[len('Speaker 2:'):].strip()
+        else:
+            spoken_content = line
+
+        # Duration heuristics
+        char_count = max(len(spoken_content), 1)
+        duration = min(4.0, 0.45 + char_count * 0.03)  # cap at 4s
+        freq = speaker_freq(spk)
+        total_samples = int(duration * sample_rate)
+        # Simple amplitude envelope (attack / release)
+        attack = int(0.05 * total_samples)
+        release = int(0.08 * total_samples)
+        two_pi_f = 2 * math.pi * freq
+        for i in range(total_samples):
+            t = i / sample_rate
+            # envelope
+            if i < attack:
+                env = i / attack
+            elif i > total_samples - release:
+                env = max(0.0, (total_samples - i) / release)
+            else:
+                env = 1.0
+            sample = 0.32 * env * math.sin(two_pi_f * t)
+            # pack as 16-bit PCM
+            frames.append(struct.pack('<h', int(sample * 32767)))
+        # brief silence between lines
+        gap_samples = int(0.18 * sample_rate)
+        for _ in range(gap_samples):
+            frames.append(struct.pack('<h', 0))
+
+    buffer = io.BytesIO()
+    with wave.open(buffer, 'wb') as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        wf.writeframes(b''.join(frames))
+    return buffer.getvalue()
 
 
 @app.get("/api/stream/{job_id}")
@@ -198,6 +325,8 @@ async def stream_transcript(job_id: str):
             ).text.strip().replace('\n', ' ')
             jobs[job_id]["title"] = title
             jobs[job_id]["status"] = "done"
+            # Persist completed job so playback still works after reload
+            _persist_job(job_id)
             final_payload = {"title": title, "full": full_transcript}
             yield f"event: done\ndata: {json.dumps(final_payload)}\n\n"
         except Exception as e:
@@ -220,6 +349,176 @@ async def get_status(job_id: str):
         "voices": j.get("voices"),
     }
 
+@app.get("/api/full/{job_id}")
+async def get_full(job_id: str):
+    if job_id not in jobs:
+        # lazy load from disk (in case of dev reload)
+        if not _load_job(job_id):
+            return JSONResponse(status_code=404, content={"error": "Job not found"})
+    j = jobs[job_id]
+    return {
+        "status": j.get("status"),
+        "title": j.get("title"),
+        "transcript": j.get("transcript"),
+        "speakers": j.get("speakers"),
+        "voices": j.get("voices"),
+        "saved": j.get("saved", False),
+        "category": j.get("category"),
+        "voice_names": j.get("voice_names"),
+    }
+
+@app.delete("/api/job/{job_id}")
+async def delete_job(job_id: str):
+    if job_id not in jobs:
+        return JSONResponse(status_code=404, content={"error": "Job not found"})
+    # Simple delete
+    del jobs[job_id]
+    return {"deleted": True, "job_id": job_id}
+
+
+def _wrap_pcm_to_wav(pcm_bytes: bytes, sample_rate: int = 24000, channels: int = 1, sample_width: int = 2) -> bytes:
+    buffer = io.BytesIO()
+    with wave.open(buffer, 'wb') as wf:
+        wf.setnchannels(channels)
+        wf.setsampwidth(sample_width)
+        wf.setframerate(sample_rate)
+        wf.writeframes(pcm_bytes)
+    return buffer.getvalue()
+
+# Canonical voice name pools (subset of original lists)
+FEMALE_VOICE_POOL = [
+    "Zephyr", "Kore", "Leda", "Aoede", "Callirrhoe", "Umbriel", "Despina", "Erinome"
+]
+MALE_VOICE_POOL = [
+    "Puck", "Charon", "Fenrir", "Orus", "Enceladus", "Iapetus", "Algieba", "Alnilam"
+]
+
+def _pick_voice(gender: str) -> str:
+    if gender == 'F' and FEMALE_VOICE_POOL:
+        return random.choice(FEMALE_VOICE_POOL)
+    if gender == 'M' and MALE_VOICE_POOL:
+        return random.choice(MALE_VOICE_POOL)
+    # fallback
+    return random.choice((FEMALE_VOICE_POOL + MALE_VOICE_POOL) or ["Zephyr"])
+
+def _generate_tts_audio(transcript: str, speakers: int, voices: list[str], voice_names: list[str] | None = None) -> bytes:
+    """Generate real TTS audio using Gemini. Returns WAV bytes.
+    Fallback responsibility handled by caller.
+    """
+    client = get_client()
+    if not transcript.strip():
+        transcript = "(empty transcript)"
+
+    # Build speech config
+    if speakers <= 1:
+        # Single speaker voice (use preselected if provided)
+        if voice_names and len(voice_names) >= 1:
+            voice_name = voice_names[0]
+        else:
+            gender = voices[0] if voices else 'M'
+            voice_name = _pick_voice(gender)
+        config = types.GenerateContentConfig(
+            response_modalities=["AUDIO"],
+            speech_config=types.SpeechConfig(
+                voice_config=types.VoiceConfig(
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=voice_name)
+                )
+            )
+        )
+    else:
+        # Multi speaker: assume transcript lines labelled "Speaker 1:" / "Speaker 2:"
+        speaker_voice_configs = []
+        for idx in range(min(speakers, 2)):
+            if voice_names and idx < len(voice_names):
+                voice_name = voice_names[idx]
+            else:
+                gender = voices[idx] if idx < len(voices) else 'M'
+                voice_name = _pick_voice(gender)
+            speaker_voice_configs.append(
+                types.SpeakerVoiceConfig(
+                    speaker=f"Speaker {idx+1}",
+                    voice_config=types.VoiceConfig(
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=voice_name)
+                    )
+                )
+            )
+        config = types.GenerateContentConfig(
+            response_modalities=["AUDIO"],
+            speech_config=types.SpeechConfig(
+                multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
+                    speaker_voice_configs=speaker_voice_configs
+                )
+            )
+        )
+
+    # Call model
+    response = client.models.generate_content(
+        model=TTS_MODEL_ID,
+        contents=[transcript],
+        config=config,
+    )
+    # Extract PCM bytes
+    # Defensive extraction: find first inline_data with data
+    audio_bytes = None
+    audio_mime = None
+    for cand in getattr(response, 'candidates', []) or []:
+        content_obj = getattr(cand, 'content', None)
+        parts = getattr(content_obj, 'parts', []) if content_obj else []
+        for part in parts:
+            inline = getattr(part, 'inline_data', None)
+            if inline and getattr(inline, 'data', None):
+                audio_bytes = inline.data
+                audio_mime = getattr(inline, 'mime_type', None)
+                break
+        if audio_bytes:
+            break
+    if not audio_bytes:
+        raise RuntimeError("No audio data returned from TTS model")
+    # Some models might already return a WAV/MP3 container. Only wrap raw PCM.
+    container_mimes = {"audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp3", "audio/ogg", "audio/webm"}
+    if audio_mime in container_mimes:
+        # Store mime for response outside
+        return audio_bytes, audio_mime
+    # Assume raw PCM 16-bit LE mono 24k
+    wrapped = _wrap_pcm_to_wav(audio_bytes, sample_rate=24000, channels=1, sample_width=2)
+    return wrapped, "audio/wav"
+
+@app.get("/api/audio/{job_id}")
+async def get_audio(job_id: str):
+    """Return (and lazily generate) audio for a job using real TTS; fallback to placeholder on failure."""
+    if job_id not in jobs:
+        if not _load_job(job_id):
+            return JSONResponse(status_code=404, content={"error": "Job not found"})
+    j = jobs[job_id]
+    if j.get("status") != "done":
+        return JSONResponse(status_code=400, content={"error": "Job not completed"})
+    if "audio_wav" not in j:
+        transcript = j.get("transcript") or "(no transcript)"
+        speakers = j.get("speakers", 1)
+        voices = j.get("voices", [])
+        voice_names = j.get("voice_names")
+        try:
+            audio_bytes, audio_mime = _generate_tts_audio(transcript, speakers, voices, voice_names)
+            j["audio_wav"] = audio_bytes
+            j["audio_mime"] = audio_mime
+            j["audio_source"] = f"tts:{audio_mime or 'unknown'}"
+        except Exception as e:
+            # Fallback to placeholder synthetic tones
+            try:
+                j["audio_wav"] = _generate_placeholder_audio(transcript, speakers, voices)
+                j["audio_mime"] = "audio/wav"
+                j["audio_source"] = f"placeholder_fallback: {e}"[:180]
+            except Exception as inner:
+                return JSONResponse(status_code=500, content={"error": f"Audio generation failed: {e}; fallback failed: {inner}"})
+    from fastapi.responses import Response
+    audio_bytes = j["audio_wav"]
+    headers = {
+        "Cache-Control": "no-store",
+        "Content-Disposition": f"inline; filename=podcast_{job_id}.wav",
+        "Content-Length": str(len(audio_bytes)),
+    }
+    return Response(content=audio_bytes, media_type=j.get("audio_mime", "audio/wav"), headers=headers)
+
 
 @app.get("/api/status")
 async def list_status():
@@ -231,9 +530,92 @@ async def list_status():
             "length": len(j.get("transcript", "")),
             "speakers": j.get("speakers"),
             "voices": j.get("voices"),
+            "saved": j.get("saved", False),
+            "category": j.get("category"),
+            "voice_names": j.get("voice_names"),
         }
         for job_id, j in jobs.items()
     }
+
+
+@app.post("/api/save/{job_id}")
+async def save_job(job_id: str, category: str = Form("generated")):
+    """Mark a completed job as saved with a category (generated | localisation)."""
+    if job_id not in jobs:
+        return JSONResponse(status_code=404, content={"error": "Job not found"})
+    j = jobs[job_id]
+    if j.get("status") != "done":
+        return JSONResponse(status_code=400, content={"error": "Job not completed"})
+    if category not in ("generated", "localisation", "localization"):
+        return JSONResponse(status_code=400, content={"error": "Invalid category"})
+    # normalize category naming
+    if category == "localization":
+        category = "localisation"
+    j["saved"] = True
+    j["category"] = category
+    j["saved_at"] = datetime.utcnow().isoformat() + "Z"
+    # Ensure audio present using preselected voice names
+    if "audio_wav" not in j and j.get("status") == "done":
+        try:
+            audio_bytes, audio_mime = _generate_tts_audio(
+                j.get("transcript") or "(no transcript)",
+                j.get("speakers",1),
+                j.get("voices", []),
+                j.get("voice_names")
+            )
+            j["audio_wav"] = audio_bytes
+            j["audio_mime"] = audio_mime
+            j["audio_source"] = f"tts:{audio_mime or 'unknown'}"
+        except Exception as e:
+            try:
+                j["audio_wav"] = _generate_placeholder_audio(j.get("transcript") or "(no transcript)", j.get("speakers",1), j.get("voices", []))
+                j["audio_mime"] = "audio/wav"
+                j["audio_source"] = f"placeholder_fallback:{e}"[:160]
+            except Exception as inner:
+                print(f"[save] audio + fallback failed {job_id}: {e}; {inner}")
+    _persist_job(job_id)
+    return {"saved": True, "job_id": job_id, "category": category}
+
+
+@app.get("/api/saved")
+async def list_saved(category: str | None = None):
+    """List saved podcasts, optionally filtered by category."""
+    result = []
+    for job_id, j in jobs.items():
+        if not j.get("saved"):
+            continue
+        if category and j.get("category") != category:
+            continue
+        result.append({
+            "job_id": job_id,
+            "title": j.get("title") or "Untitled",
+            "category": j.get("category"),
+            "saved_at": j.get("saved_at"),
+            "speakers": j.get("speakers"),
+            "voices": j.get("voices"),
+        })
+    # Sort most recent first
+    result.sort(key=lambda r: r.get("saved_at") or "", reverse=True)
+    return {"items": result}
+
+
+@app.delete("/api/saved/{job_id}")
+async def unsave_job(job_id: str):
+    """Remove a podcast from saved list (does NOT delete the job itself)."""
+    if job_id not in jobs:
+        return JSONResponse(status_code=404, content={"error": "Job not found"})
+    j = jobs[job_id]
+    if not j.get("saved"):
+        return JSONResponse(status_code=400, content={"error": "Not saved"})
+    j["saved"] = False
+    j.pop("category", None)
+    j.pop("saved_at", None)
+    # remove persisted file if exists
+    json_path = JOBS_DIR / f"{job_id}.json"
+    if json_path.exists():
+        try: json_path.unlink()
+        except Exception as e: print(f"[unsave] failed removing file {json_path}: {e}")
+    return {"unsaved": True, "job_id": job_id}
 
 
 if __name__ == "__main__":

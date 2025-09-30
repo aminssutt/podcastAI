@@ -12,7 +12,7 @@ const Home = () => {
           <div className="topbar-spacer" aria-hidden="true" />
           <div className="brand">Podcast AI</div>
           <div className="actions">
-            <button className="icon-btn" aria-label="Profile"><UserIcon /></button>
+            <button className="icon-btn" aria-label="Profile" onClick={()=>navigate('/profile')}><UserIcon /></button>
             <button className="icon-btn" aria-label="Settings"><SettingsIcon /></button>
           </div>
         </header>
