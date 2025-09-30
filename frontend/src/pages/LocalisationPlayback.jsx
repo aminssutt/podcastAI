@@ -135,11 +135,10 @@ export default function LocalisationPlayback(){
           {!loading && !error && (
             <>
               <div className="pb-title-panel"><div className="pb-label">Title</div><div className="pb-title-value">{title}</div></div>
-              <div style={{marginBottom:12,fontSize:14,opacity:0.85}}>Theme: <strong>{theme}</strong> | Location: <strong>{geo}</strong></div>
               <div className="pb-player-row">
                 <button className="pb-btn circle" onClick={handlePlay} disabled={playing || audioLoading}>{<PlayIcon size={28} />}</button>
                 <button className="pb-btn circle" onClick={handlePause} disabled={!playing}><PauseIcon size={28} /></button>
-                <div className="pb-meta">Single speaker {voices && voices.length>0 && `| ${(voices[0]==='M'?'Male':'Female')}`}</div>
+                <div className="pb-meta">Single speaker {voices && voices.length>0 && `| ${(voices[0]==='M'?'Male':'Female')}`} | Theme: <strong>{theme}</strong> | Location: <strong>{geo}</strong></div>
                 <audio
                   ref={audioRef}
                   src={audioUrl||undefined}
