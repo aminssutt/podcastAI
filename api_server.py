@@ -74,9 +74,17 @@ def get_client():
     return genai.Client(api_key=api_key)
 
 app = FastAPI(title="PodcastAI API", version="0.1.0")
+
+# Allow overriding CORS origins in production with a comma-separated env var ALLOWED_ORIGINS
+_origins_env = os.getenv("ALLOWED_ORIGINS", "").strip()
+if _origins_env:
+    _allowed_origins = [o.strip() for o in _origins_env.split(',') if o.strip()]
+else:
+    _allowed_origins = ["*"]  # fallback for local/dev
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust in production
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

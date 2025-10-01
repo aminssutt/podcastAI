@@ -10,7 +10,7 @@
   # IMPORTANT: Set this to your deployed backend (FastAPI) base URL. You can also override in Netlify UI.
   # Example if backend deployed on Render / Railway / Fly:
   # VITE_API_BASE = "https://podcast-api.onrender.com"
-  VITE_API_BASE = "https://YOUR-BACKEND-URL"
+  VITE_API_BASE = "https://podcastai-frh3.onrender.com"
 
 # Optionally you can override only for production context:
 # [context.production.environment]
