@@ -1,0 +1,13 @@
+# Development-only dependencies (NOT deployed on Render)
+# Install locally with:
+#   pip install -r requirements.txt
+#   pip install -r requirements-dev.txt
+
+# Gradio prototype UI
+gradio==5.34.0
+
+# Local microphone capture (requires portaudio installed on your system)
+pyaudio==0.2.14
+
+# Utility tooling
+pip-chill==1.0.3
