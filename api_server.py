@@ -87,6 +87,17 @@ async def health():
     """Simple health endpoint for deployment platforms (Render/Railway/Fly) to probe."""
     return {"ok": True, "jobs_in_memory": len(jobs)}
 
+@app.get("/api/version")
+async def version():
+    """Return build/runtime metadata helpful for troubleshooting deployments."""
+    import sys
+    return {
+        "app_version": app.version,
+        "python_version": sys.version.split()[0],
+        "commit": os.getenv("RENDER_GIT_COMMIT") or os.getenv("GIT_COMMIT") or None,
+        "jobs_cached": len(jobs),
+    }
+
 @app.post("/api/generate")
 async def start_generation(
     prompt_mode: str = Form(..., regex="^(text|audio)$"),
