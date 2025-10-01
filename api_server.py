@@ -82,6 +82,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/api/health")
+async def health():
+    """Simple health endpoint for deployment platforms (Render/Railway/Fly) to probe."""
+    return {"ok": True, "jobs_in_memory": len(jobs)}
+
 @app.post("/api/generate")
 async def start_generation(
     prompt_mode: str = Form(..., regex="^(text|audio)$"),
