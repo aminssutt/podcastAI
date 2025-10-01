@@ -82,6 +82,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+async def root():
+    return {
+        "name": "PodcastAI API",
+        "version": app.version,
+        "health": "/api/health",
+        "version_endpoint": "/api/version",
+        "generate": "/api/generate (POST form)",
+        "stream": "/api/stream/{job_id}",
+        "audio": "/api/audio/{job_id}",
+        "status": "/api/status/{job_id}",
+        "saved": "/api/saved"
+    }
+
 @app.get("/api/health")
 async def health():
     """Simple health endpoint for deployment platforms (Render/Railway/Fly) to probe."""
