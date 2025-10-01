@@ -1,0 +1,10 @@
+/* Global forced scaling wrapper for dashboard environments (e.g. Whale Browser) */
+.viewport-scale-root { width:100vw; height:100vh; display:flex; align-items:start; justify-content:center; overflow:hidden; background:#070707; }
+.viewport-scale-inner { width:1800px; height:720px; transform:scale(var(--app-scale)); transform-origin: top center; position:relative; }
+/* Smooth transitions when resizing */
+.viewport-scale-inner { transition: transform .25s ease; }
+
+/* Provide a min scale if extremely small screens */
+@media (max-width:900px), (max-height:450px) {
+  .viewport-scale-inner { box-shadow:0 0 0 2px rgba(255,0,0,0.25); }
+}
