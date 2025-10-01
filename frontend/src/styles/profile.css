@@ -1,5 +1,5 @@
 :root { --accent:#d6a340; --border:#3a2d10; }
-.profile-layout { width:100%; height:100vh; background:#070707; display:flex; align-items:center; justify-content:center; font-family:'NouvelR','Inter',system-ui,sans-serif; }
+.profile-layout { width:100%; height:720px; background:#070707; display:flex; align-items:center; justify-content:center; font-family:'NouvelR','Inter',system-ui,sans-serif; }
 .profile-canvas { width:1800px; height:720px; display:flex; align-items:center; justify-content:center; }
 .profile-card { width:1200px; height:640px; background:radial-gradient(circle at 18% 12%, #1d1a14 0%, #0a0a0a 72%); border:1px solid var(--border); border-radius:38px; padding:44px 62px 46px; display:flex; flex-direction:column; box-shadow:0 0 0 1px #2a1e08, 0 0 50px -12px rgba(214,163,64,0.3); }
 .profile-header { display:flex; align-items:center; justify-content:space-between; gap:30px; margin-bottom:28px; }
