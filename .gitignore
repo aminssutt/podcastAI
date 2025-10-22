@@ -1,47 +1,57 @@
 ###############################
-# Base Ignore
-###############################
 # Python
+###############################
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 *.egg-info/
+*.egg
 
-# Virtual envs
+# Virtual environments
 .venv/
 venv/
+env/
+ENV/
 
-# Environment & secrets
+###############################
+# Environment & Secrets
+###############################
 .env
 .env.*
+!.env.example
 id_pw.py
 
-# OS / misc
-*.log
-*.DS_Store
-Thumbs.db
-
-# Audio outputs
+###############################
+# Audio outputs & temp files
+###############################
 podcast_output_*.wav
 user_prompt_input.wav
 outputs/
+*.wav
+*.mp3
 
-# Node / frontend build
+###############################
+# Node / Frontend
+###############################
 frontend/node_modules/
 frontend/dist/
+frontend/.vite/
 
 ###############################
-# Explicit allow list (project sources)
+# OS & IDE
 ###############################
-!/.gitignore
-!/requirements.txt
-!/podcast_gen_v2.py
-!/podcast_gen.py
-!/temp.py
-!/frontend/
-!/frontend/index.html
-!/frontend/package.json
-!/frontend/vite.config.js
-!/frontend/src/**
-!/img/
+*.log
+*.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+###############################
+# Data (keep structure, ignore content)
+###############################
+# data/jobs/*.json files are tracked for demo purposes
+# In production, you may want to ignore them
